@@ -13,7 +13,7 @@ RILL_ENV=development RILL_BIND=127.0.0.1:3848 \
   RILL_DB="$PWD/data/mcp-dev/rill.sqlite3" cargo run --release --locked
 ```
 
-Open `http://127.0.0.1:3848` in your browser. Rill creates the database and enables WAL and its FTS5 trigram search index on first start. To try live delivery, open a second browser profile and join the first account's workspace with an invitation.
+Open `http://localhost:3848` in your browser and use `http://127.0.0.1:3847` for the default server. Browsers scope session cookies by host and can share them across ports, so these distinct hostnames let you sign in to both instances independently. Rill creates the database and enables WAL and its FTS5 trigram search index on first start. To try live delivery, open a second browser profile and join the first account's workspace with an invitation.
 
 ## Connect an MCP client
 
