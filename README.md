@@ -2,7 +2,10 @@
 
 Rill is a self-hosted team chat built in Rust. Create a private workspace, invite a teammate and talk in channels, direct messages or threads. The Japanese web client ships inside the server binary.
 
-![Rill’s fictional studio workspace, with a channel conversation and a member list](docs/preview.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/preview-dim.png">
+  <img alt="Rill’s fictional studio workspace, with a channel conversation and a member list" src="docs/preview.png">
+</picture>
 
 ## Start chatting
 
@@ -31,6 +34,7 @@ docker compose up --build
 - Create channels, reply in threads, add reactions and chat privately with another member.
 - Search accessible messages, including Japanese text, and jump to the matching conversation.
 - Get new messages as soon as they are committed. Reconnecting reloads stored history, and retrying a send safely reuses its message identifier.
+- Use the appearance control in the top bar to choose **ライト**, **ダーク** or the device setting. The browser remembers the choice across visits.
 
 The service uses Axum, Tokio and SQLite in WAL mode. Each account belongs to one workspace. Anyone with access to the service can create a separate workspace. The workspace owner issues invitations to join their team. The sample conversations stay in the browser.
 
@@ -44,9 +48,9 @@ node tests/bench.mjs target/release/rill-chat 200
 node tests/fanout.mjs target/release/rill-chat
 ```
 
-In one macOS arm64 loopback run with a warm Rust 1.99.0 release build, 200 sequential messages reached the receiving SSE client in 0.95 ms at p50 and 1.65 ms at p95. In Chromium 159, 24 Enter-to-DOM samples measured 2.1 ms at p50 and 3.8 ms at p95. With four concurrent senders and sixteen subscribers, all 3,200 deliveries arrived. The p95 time for a post to reach its last subscriber was 5.28 ms. Network distance and hardware affect deployment results.
+In a macOS arm64 loopback run of v0.2.0 with a warm release build, 200 sequential messages reached the receiving SSE client in 0.35 ms at p50 and 0.56 ms at p95. In Chromium 159, 24 Enter-to-DOM samples measured 2.0 ms at p50 and 2.5 ms at p95. With four concurrent senders and sixteen subscribers, all 3,200 deliveries arrived. The p95 time for a post to reach its last subscriber was 1.51 ms. Network distance and hardware affect deployment results.
 
-Deploy one application instance per SQLite database. Development Compose and production use separate volumes. The production workflow verifies a versioned image digest before the host starts it. [Deployment and recovery](docs/deployment.md)
+Deploy one application instance per SQLite database. Development Compose and production use separate volumes. The production workflow verifies a versioned image digest before the host starts it. [Infrastructure choices](docs/infrastructure.md) · [Connect a local development database over MCP](docs/local-database-mcp.md) · [Deployment and recovery](docs/deployment.md)
 
 ## Contribute and license
 

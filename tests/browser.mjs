@@ -73,6 +73,60 @@ async function capture(page, name) {
   if (screenshots) await page.screenshot({ path: join(screenshots, name + '.png'), animations: 'disabled' });
 }
 
+async function exerciseAppearance(page) {
+  const control = page.getByRole('combobox', { name: '画面の配色' });
+  const waitForTheme = theme =>
+    page.waitForFunction(theme => document.documentElement.dataset.theme === theme, theme);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.reload();
+  await waitForTheme('light');
+  assert.equal(await control.inputValue(), 'light', 'A new browser starts with the light palette');
+
+  await page.locator('#search-open').focus();
+  await page.keyboard.press('Tab');
+  assert.ok(await control.evaluate(el => el.matches(':focus-visible')), 'Appearance must be reachable by keyboard');
+  await control.press('Space');
+  await page.waitForFunction(() => document.getElementById('appearance').matches(':open'));
+  // Playwright drives the native picker through selectOption; macOS owns its popup keyboard events.
+  await control.selectOption('dim');
+  await waitForTheme('dim');
+  assert.equal(await control.inputValue(), 'dim');
+  await page.emulateMedia({ colorScheme: 'light' });
+
+  // A returning reader's palette must be applied even while the first stylesheet is in flight.
+  let releaseStylesheet;
+  const delayed = new Promise(resolve => { releaseStylesheet = resolve; });
+  const hold = async route => { await delayed; await route.continue(); };
+  await page.route('**/style.css', hold);
+  try {
+    await Promise.all([page.waitForRequest('**/style.css'), page.reload({ waitUntil: 'commit' })]);
+    await waitForTheme('dim');
+  } finally {
+    releaseStylesheet();
+    await page.waitForLoadState('load');
+    await page.unroute('**/style.css', hold);
+  }
+  assert.equal(await control.inputValue(), 'dim', 'Manual choice survives a reload and OS change');
+  await page.locator('#messages [data-mid]').first().waitFor();
+  for (const [width, height] of [[390, 844], [768, 1024], [1440, 900]]) {
+    await page.setViewportSize({ width, height });
+    await assertFits(page);
+    const box = await control.boundingBox();
+    assert.ok(box && (width > 768 || (box.width >= 44 && box.height >= 44)), 'Touch target size');
+    await capture(page, 'preview-dim-' + width);
+  }
+
+  await control.selectOption('device');
+  await waitForTheme('light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await waitForTheme('dim');
+  await page.reload();
+  assert.equal(await control.inputValue(), 'device');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await waitForTheme('light');
+  await control.selectOption('light');
+}
+
 async function send(page, text, channelId, thread = false) {
   const input = page.locator(thread ? '#compose-thread' : '#compose-main');
   await input.fill(text);
@@ -142,6 +196,8 @@ try {
     assert.equal(await anonymousButtons.count(), 0, 'Visible buttons need an accessible name');
     await capture(a, 'preview-' + width);
   }
+  stage = 'appearance by keyboard, persistence and device changes';
+  await exerciseAppearance(a);
   const b = await bookPage();
   const unsigned = await b.request.get(lab.origin + '/api/state');
   assert.equal(unsigned.status(), 401);
@@ -279,6 +335,8 @@ try {
   outsiderStream = await subscribe(lab.origin, newcomer);
   await a.locator('#new-dm').click();
   const direct = await postFromUi(a, '/dms', () => a.locator(`[data-person="${state.me.id}"]`).click());
+  await a.locator('#dialog').waitFor({ state: 'hidden' });
+  await a.locator(`[aria-current="page"][data-room="${direct.id}"]`).waitFor();
   const privateBody = '二人で確認する校正前のメモ';
   const dm = await send(a, privateBody, direct.id);
   await chooseRoom(b, direct.id);
@@ -321,7 +379,7 @@ try {
   await c.locator('#messages [data-mid]').first().waitFor();
   assert.equal(await c.getByText(privateBody, { exact: true }).count(), 0);
   assert.deepEqual(pageErrors, []);
-  console.log('Browser acceptance passed: preview, invitation, channels, IME, reactions, threads, retry, pagination, search, reconnect, restart, DM privacy, mobile and login/logout.');
+  console.log('Browser acceptance passed: preview, appearance, invitation, channels, IME, reactions, threads, retry, pagination, search, reconnect, restart, DM privacy, mobile and login/logout.');
 } catch (error) {
   let report = error.stack || String(error);
   for (const value of redact) if (value) report = report.replaceAll(value, '<redacted>');
