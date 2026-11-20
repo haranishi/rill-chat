@@ -6,7 +6,9 @@ Rill is a self-hosted team chat built in Rust. Create a private workspace, invit
 
 ## Start chatting
 
-With stable Rust installed, clone the repository and run the server.
+On Linux, download the archive for your CPU from [Releases](https://github.com/haranishi/rill-chat/releases), check its SHA-256 against `SHA256SUMS`, extract it and run `./rill-chat` inside the extracted directory. The binaries target Debian 12 or a compatible glibc system.
+
+To build from source with stable Rust, clone the repository and run the server.
 
 ```sh
 git clone https://github.com/haranishi/rill-chat.git
@@ -39,9 +41,10 @@ The delivery benchmark starts an isolated server and measures from the start of 
 ```sh
 cargo build --release --locked
 node tests/bench.mjs target/release/rill-chat 200
+node tests/fanout.mjs target/release/rill-chat
 ```
 
-In one macOS arm64 loopback run with a warm Rust 1.99.0 release build, 200 sequential messages reached the receiving SSE client in 0.95 ms at p50 and 1.65 ms at p95. In Chromium 159, 24 Enter-to-DOM samples measured 2.1 ms at p50 and 3.8 ms at p95. These two-session measurements cover a local machine. Network distance and concurrent load affect deployment results.
+In one macOS arm64 loopback run with a warm Rust 1.99.0 release build, 200 sequential messages reached the receiving SSE client in 0.95 ms at p50 and 1.65 ms at p95. In Chromium 159, 24 Enter-to-DOM samples measured 2.1 ms at p50 and 3.8 ms at p95. With four concurrent senders and sixteen subscribers, all 3,200 deliveries arrived. The p95 time for a post to reach its last subscriber was 5.28 ms. Network distance and hardware affect deployment results.
 
 Deploy one application instance per SQLite database. Development Compose and production use separate volumes. The production workflow verifies a versioned image digest before the host starts it. [Deployment and recovery](docs/deployment.md)
 

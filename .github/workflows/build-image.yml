@@ -46,3 +46,20 @@ jobs:
           docker run --detach --name rill-smoke -p 127.0.0.1:3847:3847 "$image@$digest"
           curl --retry 15 --retry-delay 1 --retry-connrefused --fail --silent --show-error http://127.0.0.1:3847/healthz
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Package the native executable and its license notices
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          folder="rill-chat-linux-${PLATFORM#linux/}"
+          mkdir -p "$RUNNER_TEMP/bundle/$folder" "$RUNNER_TEMP/distribution"
+          docker cp rill-smoke:/usr/local/bin/rill-chat "$RUNNER_TEMP/bundle/$folder/rill-chat"
+          docker cp rill-smoke:/usr/share/doc/rill-chat/. "$RUNNER_TEMP/bundle/$folder/"
+          test -x "$RUNNER_TEMP/bundle/$folder/rill-chat"
+          test -s "$RUNNER_TEMP/bundle/$folder/LICENSE"
+          tar -C "$RUNNER_TEMP/bundle" -czf "$RUNNER_TEMP/distribution/$folder.tar.gz" "$folder"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-${{ inputs.runner }}
+          path: ${{ runner.temp }}/distribution/*.tar.gz
+          if-no-files-found: error
+          retention-days: 2

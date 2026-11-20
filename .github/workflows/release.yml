@@ -123,7 +123,17 @@ jobs:
           docker exec rill-production test -s /data/rollout-probe
           docker run --rm --network none --user 0 --mount type=volume,src=rill-production-backups,dst=/backups,readonly \
             --entrypoint sh "$IMAGE@$DIGEST" -ec 'set -- /backups/*.tar.gz; tar -xOzf "$1" ./rollout-probe | grep -qx ok'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: native-*
+          path: ${{ runner.temp }}/distribution
+          merge-multiple: true
       - name: Publish the release and deployment receipt
         run: |
-          gh release create "$VERSION" "$RUNNER_TEMP/rill-image.json" --repo "$GITHUB_REPOSITORY" \
+          cd "$RUNNER_TEMP/distribution"
+          for arch in amd64 arm64; do
+            tar -tzf "rill-chat-linux-$arch.tar.gz" "rill-chat-linux-$arch/rill-chat" >/dev/null
+          done
+          sha256sum rill-chat-linux-*.tar.gz > SHA256SUMS
+          gh release create "$VERSION" "$RUNNER_TEMP/rill-image.json" rill-chat-linux-*.tar.gz SHA256SUMS --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "Rill Chat $VERSION" --generate-notes
