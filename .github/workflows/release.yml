@@ -114,7 +114,7 @@ jobs:
             --source-ref refs/heads/main --source-digest "$GITHUB_SHA"
           docker run --detach --name rill-production --label io.rill.managed=production \
             --mount type=volume,src=rill-production-data,dst=/data -p 127.0.0.1:3847:3847 "$IMAGE:$VERSION"
-          curl --retry 15 --retry-delay 1 --retry-connrefused -fsS http://127.0.0.1:3847/healthz
+          curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 -fsS http://127.0.0.1:3847/healthz || { docker logs rill-production; exit 1; }
           docker exec rill-production sh -ec 'echo ok > /data/rollout-probe'
           bash deploy/rollout.sh "$IMAGE@$DIGEST"
           first=$(docker inspect --format '{{.Id}}' rill-production)
