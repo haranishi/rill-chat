@@ -12,6 +12,11 @@ use std::{
 use tempfile::TempDir;
 use tower::ServiceExt;
 
+#[path = "cases/auth_rotation.rs"]
+mod auth_rotation;
+#[path = "cases/message_tools.rs"]
+mod message_tools;
+
 const PASSWORD: &str = "example-only password";
 struct App {
     _temp: TempDir,
@@ -531,4 +536,35 @@ async fn static_assets_support_conditional_fetches_and_private_api_is_never_cach
         .unwrap();
     assert_eq!(private.status(), 401);
     assert_eq!(private.headers()[header::CACHE_CONTROL], "no-store");
+}
+
+#[tokio::test]
+async fn wasm_receives_representation_specific_validators() {
+    let app = App::new();
+    let fetch = |encoding: &'static str, etag: Option<header::HeaderValue>| {
+        let mut request =
+            Request::get("/rill_client_bg.wasm").header(header::ACCEPT_ENCODING, encoding);
+        if let Some(tag) = etag {
+            request = request.header(header::IF_NONE_MATCH, tag);
+        }
+        app.router()
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+    };
+    let raw = fetch("gzip;q=0", None).await.unwrap();
+    assert_eq!(raw.headers()[header::CONTENT_TYPE], "application/wasm");
+    assert_eq!(raw.headers()[header::VARY], "Accept-Encoding");
+    let plain_tag = raw.headers()[header::ETAG].clone();
+    let plain = raw.into_body().collect().await.unwrap().to_bytes();
+    assert!(plain.starts_with(b"\0asm"));
+    let compact = fetch("gzip", Some(plain_tag.clone())).await.unwrap();
+    assert_eq!(compact.status(), 200);
+    assert_eq!(compact.headers()[header::CONTENT_ENCODING], "gzip");
+    let zip_tag = compact.headers()[header::ETAG].clone();
+    assert_ne!(plain_tag, zip_tag);
+    let zipped = compact.into_body().collect().await.unwrap().to_bytes();
+    assert!(zipped.starts_with(&[0x1f, 0x8b]));
+    assert!(zipped.len() < plain.len());
+    assert_eq!(fetch("gzip", Some(zip_tag)).await.unwrap().status(), 304);
+    assert_eq!(fetch("*;q=0", None).await.unwrap().status(), 406);
 }

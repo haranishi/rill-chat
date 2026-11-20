@@ -1,0 +1,14 @@
+[package]
+name = "rill-appearance"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "=0.2.129"
+web-sys = { version = "=0.3.106", features = ["Document", "Element", "MediaQueryList", "Storage", "Window"] }

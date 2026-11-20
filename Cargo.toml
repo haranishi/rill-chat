@@ -1,6 +1,6 @@
 [package]
 name = "rill-chat"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 build = "src/build.rs"
 rust-version = "1.88"
@@ -8,6 +8,18 @@ description = "A self-hosted, real-time team chat server with an embedded web cl
 license = "MIT"
 repository = "https://github.com/haranishi/rill-chat"
 publish = false
+
+[workspace]
+members = ["client", "client/prepaint"]
+default-members = ["."]
+resolver = "3"
+
+[profile.browser]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
 
 [dependencies]
 argon2 = "0.5.3"
@@ -22,6 +34,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10.9"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time"] }
+
+[build-dependencies]
+base64 = "0.22.1"
+flate2 = "1"
+wasm-bindgen-cli-support = "=0.2.129"
 
 [dev-dependencies]
 http-body-util = "0.1"

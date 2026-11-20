@@ -1,4 +1,4 @@
-# Design
+# Rill Chat software design document (SDD)
 
 ## User experience
 
@@ -27,3 +27,26 @@ Feature changes go through pull requests into develop. A release pull request pr
 Someone following a long thread should be able to read the author and body, recognize the active channel and find Send without scanning a saturated sidebar. This leads to three decisions: neutral surfaces, one accent for actions, and a saved appearance choice that also supports the device preference. Keep the conversation layout, content, composer behavior and the original channel illustration. Verify both palettes on real screens and check computed contrast for normal text, focus and meaningful controls.
 
 The MCP development file has its own directory and uses the production schema. Keep the single-instance SQLite/SSE design for this release. Multiple active Rust instances would need a shared event source and durable catch-up in addition to remote storage. [Infrastructure choices](../../../docs/infrastructure.md)
+
+## A Rust browser client and the work after posting
+
+A member can correct a typo without losing its thread, or keep a private reading list. A member who changes passwords keeps working on the current device while other devices sign out. For these stories the strategy is to preserve the flow of conversation. The scope adds edits, saved items and password changes. Message actions and the account menu are the entry points. Editors and saved results return to the original conversation. Keep the existing light/dim surfaces and accessible Japanese labels for both pointer and keyboard.
+
+Compile the browser client from Rust to WebAssembly. Use the browser's native DOM, Fetch, EventSource, storage and media queries through platform bindings. A small Rust appearance module runs from the initial script before CSS paints, so a returning reader sees the stored palette while the main module downloads. The server embeds the assets and serves WebAssembly with its registered MIME type. SQLite stays on the server. Keep v0.2's HTTP protocol, bounded history and commit-before-broadcast ordering. Authenticated requests and event recipients use server-side membership.
+
+Schema v2 adds an edit timestamp, a private save relation and search maintenance for edits. Compare the editor's last-seen version transactionally. Keep send retry identity valid after an edit. Saved lists are per viewer, paginated by descending message ID. Editing emits an audience-scoped refresh. A save refresh reaches only that member. Password rotation verifies the current hash, updates it and replaces sessions atomically, then revalidates active streams. [Authentication design](../../../docs/authentication.md) · [OSS principles](../../../docs/design-principles.md)
+
+```mermaid
+sequenceDiagram
+    participant A as Author · Rust/Wasm
+    participant S as Rust service
+    participant D as SQLite
+    participant B as Reader · Rust/Wasm
+    A->>S: Submit an edit with the revision seen
+    S->>D: Check session, membership, author and revision
+    D-->>S: Commit body and search index together
+    S-->>A: Updated message
+    S-->>B: SSE refresh for this conversation
+    B->>S: Read the updated message with own cookie
+    S-->>B: Updated text and reader's own saved state
+```

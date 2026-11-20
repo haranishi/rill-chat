@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { exerciseMessageTools, exerciseSavedDm, exerciseSavedPagination } from './message-tools.mjs';
+import { exercisePasswordRotation } from './account.mjs';
+import { exerciseRuntimeRaces } from './runtime-races.mjs';
 import { account, newMessage, session, startLab, subscribe, summary } from './lab.mjs';
 
 const [, , binary, screenshots] = process.argv;
@@ -27,11 +30,15 @@ async function checked(response, action) {
   return text ? JSON.parse(text) : undefined;
 }
 
-async function postFromUi(page, path, act) {
+async function postFromUi(page, path, act, expectedStatus) {
   const pending = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/api' + path && response.request().method() === 'POST'
   );
   const [response] = await Promise.all([pending, act()]);
+  if (expectedStatus !== undefined) {
+    assert.equal(response.status(), expectedStatus, path);
+    return;
+  }
   return checked(response, path);
 }
 
@@ -59,12 +66,19 @@ async function authenticate(page, form, credentials) {
   await page.locator('#dialog').waitFor({ state: 'hidden' });
 }
 
-async function bookPage(viewport = { width: 1440, height: 900 }) {
-  const context = await browser.newContext({ viewport, locale: 'ja-JP' });
+async function bookPage({ hasTouch = false } = {}) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'ja-JP', hasTouch });
   const page = await context.newPage();
   page.setDefaultTimeout(8000);
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.goto(lab.origin);
+  const [wasm] = await Promise.all([
+    page.waitForResponse(r => new URL(r.url()).pathname.endsWith('.wasm')),
+    page.goto(lab.origin)
+  ]);
+  assert.ok(wasm.ok(), 'The browser must load the WebAssembly client');
+  assert.equal(wasm.headers()['content-type'].split(';')[0], 'application/wasm');
+  const header = (await wasm.body()).subarray(0, 8);
+  assert.deepEqual([...header], [0, 97, 115, 109, 1, 0, 0, 0], 'WebAssembly v1 binary header');
   await page.locator('#messages [data-mid]').first().waitFor();
   return page;
 }
@@ -107,6 +121,24 @@ async function exerciseAppearance(page) {
     await page.unroute('**/style.css', hold);
   }
   assert.equal(await control.inputValue(), 'dim', 'Manual choice survives a reload and OS change');
+  await page.locator('#messages [data-mid]').first().waitFor();
+  // The stylesheet can also finish first. A slow module must not expose a light blank screen.
+  const pageColor = () => page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
+  const dimColor = await pageColor();
+  let releaseWasm;
+  const wasmGate = new Promise(resolve => { releaseWasm = resolve; });
+  const holdWasm = async route => { await wasmGate; await route.continue(); };
+  await page.route('**/*.wasm', holdWasm);
+  try {
+    await Promise.all([page.waitForRequest('**/*.wasm'), page.reload({ waitUntil: 'commit' })]);
+    await page.waitForFunction(() => document.querySelector('#shell') && getComputedStyle(document.documentElement).getPropertyValue('--paper').trim());
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+    assert.equal(await pageColor(), dimColor, 'A returning reader gets a dim background before Wasm finishes');
+  } finally {
+    releaseWasm();
+    await page.waitForLoadState('load');
+    await page.unroute('**/*.wasm', holdWasm);
+  }
   await page.locator('#messages [data-mid]').first().waitFor();
   for (const [width, height] of [[390, 844], [768, 1024], [1440, 900]]) {
     await page.setViewportSize({ width, height });
@@ -198,7 +230,16 @@ try {
   }
   stage = 'appearance by keyboard, persistence and device changes';
   await exerciseAppearance(a);
-  const b = await bookPage();
+  stage = 'client bootstrap failure';
+  const failureContext = await browser.newContext();
+  const failurePage = await failureContext.newPage();
+  await failurePage.route('**/*.wasm', route => route.abort());
+  await failurePage.goto(lab.origin);
+  await failurePage.getByRole('alert').filter({ hasText: '読み込めません' }).waitFor();
+  assert.equal(await failurePage.locator('#messages [data-mid]').count(), 0);
+  await failureContext.close();
+
+  const b = await bookPage({ hasTouch: true });
   const unsigned = await b.request.get(lab.origin + '/api/state');
   assert.equal(unsigned.status(), 401);
 
@@ -358,13 +399,13 @@ try {
 
   stage = 'mobile navigation and login';
   await b.setViewportSize({ width: 390, height: 844 });
-  await b.locator('#nav-open').click();
-  await b.locator(`[data-room="${room.id}"]`).click();
+  await b.locator('#nav-open').tap();
+  await b.locator(`[data-room="${room.id}"]`).tap();
   const mobileInput = b.locator('#compose-main');
   await mobileInput.fill('スマートフォンから確認しました。');
   await mobileInput.press('Enter');
   assert.equal(await mobileInput.inputValue(), 'スマートフォンから確認しました。\n');
-  const mobilePost = await postFromUi(b, `/channels/${room.id}/messages`, () => b.locator('#send-main').click());
+  const mobilePost = await postFromUi(b, `/channels/${room.id}/messages`, () => b.locator('#send-main').tap());
   await timelineHas(b, mobilePost.id).waitFor();
   await assertFits(b);
   await capture(b, 'conversation-390');
@@ -372,14 +413,34 @@ try {
   await authenticate(c, 'login', { handle: peer.handle, password: peer.password });
   await chooseRoom(c, direct.id);
   await timelineHas(c, dm.id).waitFor();
+  stage = 'real-time message editing, conflicts and private saved replies';
+  const savedReply = await exerciseMessageTools({
+    author: a, reader: b, secondReader: c, roomId: room.id,
+    send, chooseRoom, openNavigation, postFromUi, capture
+  });
+  stage = 'save and revisit a private DM on mobile';
+  await exerciseSavedDm({ reader: b, otherMember: a, dm, roomId: room.id, chooseRoom, openNavigation, postFromUi });
+  stage = 'saved list pagination and jump';
+  await exerciseSavedPagination({ page: c, origin: lab.origin, roomId: room.id, openNavigation });
+  stage = 'password rotation, revoked devices and sign-in';
+  const newPassword = account('replacement').password;
+  const wrongPassword = account('incorrect').password;
+  redact.add(newPassword);
+  redact.add(wrongPassword);
+  await exercisePasswordRotation({
+    current: b, other: c, author: a, origin: lab.origin, peer, newPassword, wrongPassword,
+    saved: savedReply, postFromUi, openNavigation, authenticate, capture
+  });
   await c.locator('#account').click();
   await postFromUi(c, '/auth/logout', () => c.locator('#logout').click());
   assert.equal((await c.request.get(lab.origin + '/api/state')).status(), 401);
   await c.reload();
   await c.locator('#messages [data-mid]').first().waitFor();
   assert.equal(await c.getByText(privateBody, { exact: true }).count(), 0);
+  stage = 'out-of-order history, updates and session changes';
+  await exerciseRuntimeRaces(browser, lab.origin);
   assert.deepEqual(pageErrors, []);
-  console.log('Browser acceptance passed: preview, appearance, invitation, channels, IME, reactions, threads, retry, pagination, search, reconnect, restart, DM privacy, mobile and login/logout.');
+  console.log('Browser acceptance passed: preview, appearance, invitation, channels, IME, reactions, threads, retry, pagination, search, reconnect, restart, DM privacy, mobile, Rust/Wasm, editing, private saves, password rotation, login/logout and out-of-order responses.');
 } catch (error) {
   let report = error.stack || String(error);
   for (const value of redact) if (value) report = report.replaceAll(value, '<redacted>');
