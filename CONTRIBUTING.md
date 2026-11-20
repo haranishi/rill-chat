@@ -4,14 +4,15 @@ Use a feature branch for a change. The Japanese browser interface and the Rust s
 
 ## Run a change locally
 
-Install stable Rust and Node.js 22 or later. Start the service with `cargo run --locked` and open <http://127.0.0.1:3847>. It writes its development database under `data/`. You can also run `docker compose up --build`. Compose keeps its data in a separate development volume.
+Install stable Rust and add the browser target with `rustup target add wasm32-unknown-unknown`. Start the service with `cargo run --locked` and open <http://127.0.0.1:3847>. Cargo builds and embeds the Rust browser crate automatically. Node.js 22 or later is used by the browser tests and benchmarks. The local server writes to `data/`. Docker Compose keeps its data in a separate development volume.
 
 Start a branch from `develop` and open a pull request back to `develop`. Explain the change a user will see and how you tested it. Use fictional workspaces and messages in examples and issue reports.
 
 ```sh
 cargo fmt --all -- --check
+cargo clippy --locked -p rill-client -p rill-appearance --target wasm32-unknown-unknown -- -D warnings
 cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
+cargo test --locked --workspace
 cargo build --release --locked
 npm ci --prefix tests
 (cd tests && npx --no-install playwright install chromium)

@@ -1,5 +1,6 @@
 FROM rust:1-bookworm@sha256:ade39a710ef85f3506cffcfec3e8a24ba090badef1dff2fb798f71d878833fea AS builder
 WORKDIR /build
+RUN rustup target add wasm32-unknown-unknown
 COPY . .
 RUN cargo build --locked --release --bin rill-chat
 RUN mkdir -p /notices/crates /notices/rust \

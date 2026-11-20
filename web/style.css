@@ -112,6 +112,8 @@ button { padding:0 }
 .room-link:hover,.first-dm:hover { background:var(--hover) }
 .room-link.selected { color:var(--accent-ink); background:var(--accent-tint); box-shadow:inset 3px 0 var(--accent); font-weight:650 }
 .room-link-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+#saved-open { margin-bottom:14px }
+#saved-open .icon { width:17px; height:17px }
 .nav-hash { display:inline-block; width:17px; font-family:ui-monospace,monospace; text-align:center; font-size:18px; font-weight:450; color:var(--quiet) }
 .room-link.selected .nav-hash { color:var(--accent-ink) }
 .first-dm { color:var(--quiet); font-size:12px }
@@ -175,6 +177,11 @@ kbd { font:10px/1.4 ui-monospace,SFMono-Regular,monospace; color:var(--quiet); b
 .post-byline { display:flex; align-items:baseline; gap:10px; min-height:22px; padding:0 1px }
 .post-byline strong { font-size:14px; line-height:1.4; letter-spacing:.005em }
 .post-byline time { color:var(--quiet); font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap }
+.post-edited { color:var(--quiet); font-size:10px; white-space:nowrap }
+.saved-mark { color:var(--accent); align-self:center }
+.saved-mark .icon { width:13px; height:13px; fill:var(--accent-tint) }
+.mini-icon[data-save][aria-pressed=true] { color:var(--accent) }
+.mini-icon[data-save][aria-pressed=true] .icon { fill:var(--accent-tint) }
 .post-body { font-size:14px; line-height:1.78; color:var(--ink); overflow-wrap:anywhere; white-space:pre-wrap; tab-size:4 }
 .post-body a { word-break:break-word }
 .post-body code { font:12px/1.5 ui-monospace,SFMono-Regular,monospace; background:var(--inset); color:var(--accent-ink); padding:2px 4px; border-radius:4px }
@@ -288,6 +295,10 @@ dialog::backdrop { background:var(--overlay); backdrop-filter:blur(2px) }
 .profile-card .person-text small,#dialog .person-row small { font-size:12px }
 .profile-list { margin:13px 0 20px; padding:14px 0; border-block:1px solid var(--line); display:grid; grid-template-columns:auto 1fr; gap:8px 15px; font-size:13px }
 .profile-list dt { color:var(--muted) }.profile-list dd { margin:0; overflow-wrap:anywhere }
+.profile-actions { display:flex; flex-wrap:wrap; align-items:start; gap:8px }
+.field textarea { resize:vertical; min-height:96px }
+#edit-conflict { margin:10px 0 14px; font-size:13px }
+#edit-conflict blockquote { margin:6px 0 10px; padding:9px 12px; border-left:3px solid var(--accent-line); background:var(--inset); white-space:pre-wrap; overflow-wrap:anywhere }
 #dialog button.person-row { padding:8px; border-radius:7px }
 #dialog button.person-row:hover { background:var(--hover) }
 .search-dialog { width:min(565px,calc(100vw - 30px)) }
@@ -301,6 +312,11 @@ dialog::backdrop { background:var(--overlay); backdrop-filter:blur(2px) }
 .search-result>span:last-child { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; overflow-wrap:anywhere }
 .result-meta { display:flex; align-items:center; gap:3px; color:var(--quiet); font-size:11px }
 .result-meta .icon { width:13px; height:13px }
+#saved-results { max-height:55dvh; overflow:auto }
+.saved-row { display:flex; align-items:center; border-bottom:1px solid var(--line); gap:5px }
+.saved-row .search-result { min-width:0; border:0 }
+.saved-row .mini-icon { width:44px; height:44px }
+#saved-older,#saved-retry { display:block; margin:12px auto 0; min-height:36px }
 .product-intro { display:flex; align-items:center; gap:14px; font-size:14px; margin-bottom:18px }
 #dialog-body h3 { margin:21px 0 9px }
 .share-list { display:flex; flex-wrap:wrap; gap:7px }
@@ -378,6 +394,12 @@ dialog::backdrop { background:var(--overlay); backdrop-filter:blur(2px) }
 }
 @media(pointer:coarse) and (min-width:701px) {
   .post-tools { opacity:1; pointer-events:auto; position:static; flex-direction:column; border:none; background:none; box-shadow:none }
+}
+@media(max-width:700px), (pointer:coarse) {
+  .post.with-actions { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; row-gap:2px }
+  .with-actions .post-tools { grid-column:2; position:static; display:flex; flex-direction:row; opacity:1; pointer-events:auto; border:0; padding:0; background:transparent; box-shadow:none }
+  .with-actions .post-tools .mini-icon { width:44px; height:44px }
+  .with-actions .post-byline { flex-wrap:wrap; row-gap:1px }
 }
 @media(prefers-reduced-motion:reduce) {
   *,*::before,*::after { scroll-behavior:auto!important; transition:none!important; animation:none!important }

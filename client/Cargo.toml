@@ -1,0 +1,29 @@
+[package]
+name = "rill-client"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rill-appearance = { path = "prepaint" }
+wasm-bindgen = "=0.2.129"
+wasm-bindgen-futures = "=0.4.79"
+js-sys = "=0.3.106"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+web-sys = { version = "=0.3.106", features = [
+    "AddEventListenerOptions", "BroadcastChannel", "Clipboard", "CssStyleDeclaration", "Crypto", "Document",
+    "DocumentFragment", "DomRect", "DomStringMap", "DomTokenList", "Element", "Event",
+    "EventSource", "EventTarget", "FocusEvent", "FormData", "Headers", "History",
+    "HtmlButtonElement", "HtmlCollection", "HtmlDialogElement", "HtmlDocument", "HtmlElement",
+    "HtmlFormElement", "HtmlInputElement", "HtmlSelectElement", "HtmlTextAreaElement",
+    "InputEvent", "KeyboardEvent", "Location", "MediaQueryList", "MediaQueryListEvent",
+    "MessageEvent", "MouseEvent", "Navigator", "Node", "NodeList", "Request", "RequestCache",
+    "RequestCredentials", "RequestInit", "Response", "ScrollIntoViewOptions", "ScrollLogicalPosition",
+    "ShareData", "Storage", "StorageEvent", "SubmitEvent", "Window"
+] }

@@ -37,6 +37,8 @@ The host pulls the exact digest, stops the old container, archives its data, sta
 
 For a compatible database schema, promote a previously published version using the same workflow. A failed cutover attempts to restart the previous container against the existing volume. If the new code changed the schema incompatibly, restore a pre-upgrade backup with its matching earlier version.
 
+Rill v0.3 migrates a v0.2 database from schema 1 to 2 on first start. Existing accounts, sessions, conversation IDs and send retries carry forward. To run v0.2 again, restore the pre-upgrade backup into a separate volume. Keep the v0.3 volume for any messages written after the upgrade.
+
 The rollout saves a cold archive in the `rill-production-backups` Docker volume before each upgrade. Set a retention policy and copy backups to encrypted off-host storage. To make an additional snapshot, run the following on the host while a deployment is idle. It restarts the app when archiving finishes.
 
 ```bash

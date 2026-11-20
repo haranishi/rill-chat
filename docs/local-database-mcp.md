@@ -26,7 +26,7 @@ npx --yes --omit=optional @bytebase/dbhub@2.0.0 \
 
 In a desktop client, use `npx` as the command and enter each argument separately. Pass the absolute path to the configuration file after `--config` so the client can start from any directory. DBHub resolves the database path relative to the [development configuration](../deploy/dbhub.dev.toml).
 
-Call `tools/list` to see `search_objects` and `execute_sql`. For a quick check, call `execute_sql` with the following SQL. A new Rill database reports schema version `1` and journal mode `wal`.
+Call `tools/list` to see `search_objects` and `execute_sql`. For a quick check, call `execute_sql` with the following SQL. Rill v0.3 reports schema version `2` and journal mode `wal`.
 
 ```sql
 SELECT user_version, journal_mode

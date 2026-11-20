@@ -56,6 +56,7 @@ pub fn service(
         .route("/auth/create", post(auth::create))
         .route("/auth/join", post(auth::join))
         .route("/auth/login", post(auth::login))
+        .route("/auth/password", post(auth::change_password))
         .route("/auth/logout", post(auth::logout))
         .route("/state", get(rooms::state))
         .route("/invites", post(auth::invite))
@@ -66,6 +67,9 @@ pub fn service(
             get(history::history).post(messages::send),
         )
         .route("/messages/{id}/reactions", post(messages::react))
+        .route("/messages/{id}/edit", post(messages::edit))
+        .route("/messages/{id}/saved", post(messages::save))
+        .route("/saved", get(history::saved))
         .route("/search", get(history::search))
         .route("/events", get(events::events))
         .fallback(|| async { ApiError::missing() })
@@ -161,7 +165,7 @@ async fn response_headers(request: Request, next: Next) -> Response {
     headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     headers.insert("content-security-policy",HeaderValue::from_static(
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
     ));
     response
 }

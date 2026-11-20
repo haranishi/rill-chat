@@ -19,7 +19,7 @@ use tokio::sync::broadcast;
 use crate::{
     AppState,
     auth::SessionKey,
-    model::{Audience, Member, Message, Result, now_ms},
+    model::{Audience, Member, Message, Recipients, Result, now_ms},
 };
 
 #[derive(Clone)]
@@ -38,7 +38,7 @@ impl Update {
             data: data.to_string().into(),
         }
     }
-    pub fn reaction(audience: Audience, channel: i64, message: i64) -> Self {
+    pub fn message_refresh(audience: Audience, channel: i64, message: i64) -> Self {
         Self {
             audience,
             kind: "refresh",
@@ -47,8 +47,17 @@ impl Update {
                 .into(),
         }
     }
+    pub fn saved(member: &Member, channel: i64, message: i64) -> Self {
+        Self {
+            audience: Audience::member(member),
+            kind: "refresh",
+            data: json!({"channel_id":channel,"message_id":message,"saved_changed":true})
+                .to_string()
+                .into(),
+        }
+    }
     pub fn message(audience: Audience, msg: &Message) -> Self {
-        // A newly inserted message has no personalized reactions. Serialize once for all recipients.
+        // Only new messages are broadcast here. They have no saves or reactions yet.
         Self {
             audience,
             kind: "message",
@@ -93,16 +102,15 @@ impl Hub {
         let Some(online) = workspaces.get(&update.audience.workspace) else {
             return;
         };
-        if let Some((a, b)) = update.audience.dm {
-            for user in [a, b] {
-                if let Some(feed) = online.get(&user) {
-                    let _ = feed.sender.send(update.clone());
-                }
+        let send = |feed: &Feed| {
+            let _ = feed.sender.send(update.clone());
+        };
+        match update.audience.recipients {
+            Recipients::User(id) => online.get(&id).into_iter().for_each(send),
+            Recipients::Direct(a, b) => {
+                [a, b].iter().filter_map(|id| online.get(id)).for_each(send);
             }
-        } else {
-            for feed in online.values() {
-                let _ = feed.sender.send(update.clone());
-            }
+            Recipients::Workspace => online.values().for_each(send),
         }
     }
 }
