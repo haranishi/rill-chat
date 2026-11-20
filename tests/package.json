@@ -1,0 +1,7 @@
+{
+  "name": "rill-chat-browser-tests",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "devDependencies": { "playwright": "1.65.1" }
+}

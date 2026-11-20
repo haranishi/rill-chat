@@ -1,0 +1,83 @@
+name: Deploy production
+run-name: Deploy ${{ inputs.version }} to production
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published stable release tag, e.g. v0.1.0
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+    outputs:
+      image: ${{ steps.receipt.outputs.image }}
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the release, source commit and signed image
+        id: receipt
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/main'
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          gh release view "$VERSION" --json isDraft,isPrerelease,tagName \
+            | jq -e --arg v "$VERSION" '(.isDraft == false) and (.isPrerelease == false) and (.tagName == $v)'
+          gh release download "$VERSION" --pattern rill-image.json --dir "$RUNNER_TEMP"
+          commit=$(git rev-parse "refs/tags/$VERSION^{commit}")
+          git merge-base --is-ancestor "$commit" "$GITHUB_SHA"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          digest=$(jq -er --arg v "$VERSION" --arg c "$commit" --arg i "$image" \
+            'select(.version==$v and .commit==$c and .image==$i) | .digest | select(test("^sha256:[0-9a-f]{64}$"))' \
+            "$RUNNER_TEMP/rill-image.json")
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          gh attestation verify "oci://$image@$digest" --repo "$GITHUB_REPOSITORY" --deny-self-hosted-runners \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-ref refs/heads/main --source-digest "$commit"
+          echo "image=$image@$digest" >> "$GITHUB_OUTPUT"
+          printf 'Verified %s at %s, image %s@%s\n' "$VERSION" "$commit" "$image" "$digest" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Apply the verified image
+        env:
+          IMAGE: ${{ needs.verify.outputs.image }}
+          SSH_HOST: ${{ vars.PROD_HOST }}
+          SSH_USER: ${{ vars.PROD_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
+        run: |
+          [[ "$SSH_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+          [[ "$SSH_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          : "${SSH_PRIVATE_KEY:?Set PROD_SSH_KEY in the production environment}"
+          : "${SSH_KNOWN_HOSTS:?Set PROD_KNOWN_HOSTS in the production environment}"
+          umask 077
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/rill_key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/rill_known_hosts"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o GlobalKnownHostsFile=/dev/null -o "UserKnownHostsFile=$RUNNER_TEMP/rill_known_hosts" \
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -i "$RUNNER_TEMP/rill_key" \
+            "$SSH_USER@$SSH_HOST" "bash -s -- '$IMAGE'" < deploy/rollout.sh
