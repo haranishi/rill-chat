@@ -1,0 +1,13 @@
+[[sources]]
+id = "rill_dev"
+type = "sqlite"
+database = "../data/mcp-dev/rill.sqlite3"
+
+[[tools]]
+name = "execute_sql"
+source = "rill_dev"
+readonly = true
+
+[[tools]]
+name = "search_objects"
+source = "rill_dev"
