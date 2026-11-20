@@ -100,20 +100,33 @@ pub struct Member {
 #[derive(Clone, Copy, Debug)]
 pub struct Audience {
     pub workspace: i64,
-    pub dm: Option<(i64, i64)>,
+    pub recipients: Recipients,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Recipients {
+    Workspace,
+    Direct(i64, i64),
+    User(i64),
 }
 
 impl Audience {
     pub fn workspace(id: i64) -> Self {
         Self {
             workspace: id,
-            dm: None,
+            recipients: Recipients::Workspace,
         }
     }
     pub fn direct(workspace: i64, a: i64, b: i64) -> Self {
         Self {
             workspace,
-            dm: Some((a, b)),
+            recipients: Recipients::Direct(a, b),
+        }
+    }
+    pub fn member(member: &Member) -> Self {
+        Self {
+            workspace: member.workspace,
+            recipients: Recipients::User(member.user.id),
         }
     }
     pub fn channel(db: &Connection, member: &Member, channel: i64) -> Result<Self> {
@@ -126,7 +139,10 @@ impl Audience {
                 let b: Option<i64> = row.get(2)?;
                 Ok(Self {
                     workspace: row.get(0)?,
-                    dm: a.zip(b),
+                    recipients: match a.zip(b) {
+                        Some((a, b)) => Recipients::Direct(a, b),
+                        None => Recipients::Workspace,
+                    },
                 })
             },
         )
@@ -159,6 +175,8 @@ pub struct Message {
     pub body: String,
     pub parent_id: Option<i64>,
     pub created_at: i64,
+    pub edited_at: Option<i64>,
+    pub saved: bool,
     pub reply_count: i64,
     pub reactions: Vec<Reaction>,
 }
@@ -173,4 +191,9 @@ pub struct HistoryQuery {
 #[derive(Deserialize)]
 pub struct SearchQuery {
     pub q: String,
+}
+
+#[derive(Deserialize)]
+pub struct SavedQuery {
+    pub before: Option<i64>,
 }

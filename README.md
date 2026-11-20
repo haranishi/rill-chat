@@ -1,6 +1,6 @@
 # Rill Chat
 
-Rill is a self-hosted team chat built in Rust. Create a private workspace, invite a teammate and talk in channels, direct messages or threads. The Japanese web client ships inside the server binary.
+Rill is a self-hosted team chat built in Rust, from message storage to the interactions in your browser. Create a workspace, invite a teammate and talk in channels, direct messages or threads. One executable includes the Japanese WebAssembly client.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/preview-dim.png">
@@ -16,6 +16,7 @@ To build from source with stable Rust, clone the repository and run the server.
 ```sh
 git clone https://github.com/haranishi/rill-chat.git
 cd rill-chat
+rustup target add wasm32-unknown-unknown
 cargo run --release --locked
 ```
 
@@ -32,6 +33,9 @@ docker compose up --build
 ## What the team can do
 
 - Create channels, reply in threads, add reactions and chat privately with another member.
+- Correct your own posts and replies. Colleagues see the revision live, and Japanese search finds the updated text.
+- Choose **あとで読む** on a message to save it privately. Open its entry in the sidebar to return to the exact conversation or reply.
+- Change your password from your account menu. Other signed-in devices must authenticate again.
 - Search accessible messages, including Japanese text, and jump to the matching conversation.
 - Get new messages as soon as they are committed. Reconnecting reloads stored history, and retrying a send safely reuses its message identifier.
 - Use the appearance control in the top bar to choose **ライト**, **ダーク** or the device setting. The browser remembers the choice across visits.
@@ -48,12 +52,21 @@ node tests/bench.mjs target/release/rill-chat 200
 node tests/fanout.mjs target/release/rill-chat
 ```
 
-In a macOS arm64 loopback run of v0.2.0 with a warm release build, 200 sequential messages reached the receiving SSE client in 0.35 ms at p50 and 0.56 ms at p95. In Chromium 159, 24 Enter-to-DOM samples measured 2.0 ms at p50 and 2.5 ms at p95. With four concurrent senders and sixteen subscribers, all 3,200 deliveries arrived. The p95 time for a post to reach its last subscriber was 1.51 ms. Network distance and hardware affect deployment results.
+Measured on a warm macOS arm64 loopback installation with SQLite durable commits enabled. Each backend figure is the median of three 200-post runs, alternating the two release binaries on the same Mac. The fan-out test delivered every message to all sixteen readers (3,200 deliveries per run).
+
+| Measured path | v0.2 p50 / p95 | v0.3 p50 / p95 |
+| --- | --- | --- |
+| Sender HTTP request to peer SSE event | 0.43 / 1.08 ms | 0.44 / 0.84 ms |
+| Four senders to the last of sixteen subscribers | 1.36 / 2.11 ms | 1.53 / 2.43 ms |
+
+Pressing Enter in one v0.3 window and inserting the message in the other window's conversation took 1.6 ms at p50 and 1.8 ms at p95 in Chromium 159. In desktop WebKit 27.2 both values measured 4 ms at that browser timer's precision. Each browser ran 24 measured sends after four warmups. Network distance, storage and concurrency affect deployment results.
 
 Deploy one application instance per SQLite database. Development Compose and production use separate volumes. The production workflow verifies a versioned image digest before the host starts it. [Infrastructure choices](docs/infrastructure.md) · [Connect a local development database over MCP](docs/local-database-mcp.md) · [Deployment and recovery](docs/deployment.md)
 
 ## Contribute and license
 
 Open feature pull requests against `develop`. A release pull request promotes a tested change to `main`. See [Contributing](CONTRIBUTING.md) for the test commands and release procedure.
+
+Read how Rill chooses features, keeps direct messages private and handles old databases. [Design principles and roadmap](docs/design-principles.md) · [Authentication design](docs/authentication.md) · [Software design document (SDD)](.kiro/specs/workspace-chat/design.md) · [API contract](.kiro/specs/workspace-chat/protocol.md)
 
 Rill’s original code and artwork are available under the [MIT License](LICENSE).

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
 use axum::{
@@ -288,6 +288,43 @@ struct Account {
     window: i64,
 }
 
+impl Account {
+    fn read(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            hash: row.get(1)?,
+            failures: row.get(2)?,
+            window: row.get(3)?,
+        })
+    }
+
+    fn throttled(&self) -> bool {
+        self.failures >= 10 && self.window > now_ms() - 60_000
+    }
+}
+
+fn verify_password(password: &str, encoded: &str) -> Result<bool> {
+    let hash = PasswordHash::new(encoded).map_err(|_| ApiError::internal())?;
+    Ok(Argon2::default()
+        .verify_password(password.as_bytes(), &hash)
+        .is_ok())
+}
+
+async fn record_failure(s: &AppState, id: i64, hash: String) -> Result<()> {
+    s.db.run(move |connection| {
+        let now = now_ms();
+        connection.execute(
+            "UPDATE users SET
+                login_failures=CASE WHEN failure_window<=?1 THEN 1 ELSE login_failures+1 END,
+                failure_window=CASE WHEN failure_window<=?1 THEN ?2 ELSE failure_window END
+             WHERE id=?3 AND password_hash=?4",
+            params![now - 60_000, now, id, hash],
+        )?;
+        Ok(())
+    })
+    .await
+}
+
 pub async fn login(
     State(s): State<AppState>,
     headers: HeaderMap,
@@ -300,23 +337,12 @@ pub async fn login(
             Ok(c.query_row(
                 "SELECT id,password_hash,login_failures,failure_window FROM users WHERE handle=?",
                 [handle],
-                |r| {
-                    Ok(Account {
-                        id: r.get(0)?,
-                        hash: r.get(1)?,
-                        failures: r.get(2)?,
-                        window: r.get(3)?,
-                    })
-                },
+                Account::read,
             )
             .optional()?)
         })
         .await?;
-    let window = now_ms() - Duration::from_secs(60).as_millis() as i64;
-    if account
-        .as_ref()
-        .is_some_and(|a| a.failures >= 10 && a.window > window)
-    {
+    if account.as_ref().is_some_and(Account::throttled) {
         return Err(ApiError::busy());
     }
     // Unknown handles do the same expensive verification without creating persistent throttle rows.
@@ -326,10 +352,7 @@ pub async fn login(
         .unwrap_or(&s.dummy_password)
         .to_owned();
     let verified = password_work(s.hash_slots.clone(), move || {
-        let hash = PasswordHash::new(&hash).map_err(|_| ApiError::internal())?;
-        Ok(Argon2::default()
-            .verify_password(body.password.as_bytes(), &hash)
-            .is_ok())
+        verify_password(&body.password, &hash)
     })
     .await?;
     let bad = || {
@@ -338,19 +361,9 @@ pub async fn login(
             "ログインIDまたはパスワードが違います。",
         )
     };
-    let id = account.ok_or_else(bad)?.id;
+    let account = account.ok_or_else(bad)?;
     if !verified {
-        s.db.run(move |connection| {
-            connection.execute(
-                "UPDATE users SET
-                    login_failures=CASE WHEN failure_window<=?1 THEN 1 ELSE login_failures+1 END,
-                    failure_window=CASE WHEN failure_window<=?1 THEN ?2 ELSE failure_window END
-                 WHERE id=?3",
-                params![window, now_ms(), id],
-            )?;
-            Ok(())
-        })
-        .await?;
+        record_failure(&s, account.id, account.hash).await?;
         return Err(bad());
     }
     let raw = secret();
@@ -359,11 +372,15 @@ pub async fn login(
     let replaces_session = old.is_some();
     s.db.run(move |db| {
         let tx = db.transaction()?;
-        tx.execute(
-            "UPDATE users SET login_failures=0,failure_window=0 WHERE id=?",
-            [id],
+        // A password change may have committed while Argon2 verified the old password.
+        let matched = tx.execute(
+            "UPDATE users SET login_failures=0,failure_window=0 WHERE id=? AND password_hash=?",
+            params![account.id, account.hash],
         )?;
-        set_session(&tx, id, &hashed, old.as_deref())?;
+        if matched == 0 {
+            return Err(bad());
+        }
+        set_session(&tx, account.id, &hashed, old.as_deref())?;
         tx.commit()?;
         Ok(())
     })
@@ -384,6 +401,77 @@ pub async fn logout(State(s): State<AppState>, headers: HeaderMap) -> Result<Res
         s.revocations.send_modify(|n| *n = n.wrapping_add(1));
     }
     cookie("", 0, s.secure)
+}
+
+#[derive(Deserialize)]
+pub struct ChangePassword {
+    current_password: String,
+    new_password: String,
+}
+
+pub async fn change_password(
+    State(s): State<AppState>,
+    SessionKey(key): SessionKey,
+    Json(input): Json<ChangePassword>,
+) -> Result<Response> {
+    valid_password(&input.current_password)?;
+    valid_password(&input.new_password)?;
+    if input.current_password == input.new_password {
+        return Err(ApiError::bad(
+            "現在のものと異なるパスワードを入力してください。",
+        ));
+    }
+    let account =
+        s.db.for_user(key.clone(), |c, member| {
+            Ok(c.query_row(
+                "SELECT id,password_hash,login_failures,failure_window FROM users WHERE id=?",
+                [member.user.id],
+                Account::read,
+            )?)
+        })
+        .await?;
+    if account.throttled() {
+        return Err(ApiError::busy());
+    }
+    let previous = account.hash.clone();
+    let next = password_work(s.hash_slots.clone(), move || {
+        if verify_password(&input.current_password, &previous)? {
+            Ok(Some(hash_password(&input.new_password)?))
+        } else {
+            Ok(None)
+        }
+    })
+    .await?;
+    let Some(next) = next else {
+        record_failure(&s, account.id, account.hash).await?;
+        return Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "現在のパスワードが違います。",
+        ));
+    };
+    let raw = secret();
+    let hashed = digest(&raw);
+    let revocations = s.revocations.clone();
+    s.db.for_user(key, move |c, member| {
+        let tx = c.transaction()?;
+        let changed = tx.execute(
+            "UPDATE users SET password_hash=?,login_failures=0,failure_window=0
+             WHERE id=? AND password_hash=?",
+            params![next, member.user.id, account.hash],
+        )?;
+        if changed == 0 {
+            return Err(ApiError::conflict(
+                "認証情報が更新されました。もう一度ログインしてください。",
+            ));
+        }
+        tx.execute("DELETE FROM sessions WHERE user_id=?", [member.user.id])?;
+        set_session(&tx, member.user.id, &hashed, None)?;
+        tx.commit()?;
+        revocations.send_modify(|n| *n = n.wrapping_add(1));
+        Ok(())
+    })
+    .await?;
+    cookie(&raw, SESSION_AGE / 1000, s.secure)
 }
 
 pub async fn invite(State(s): State<AppState>, SessionKey(key): SessionKey) -> Result<Json<Value>> {

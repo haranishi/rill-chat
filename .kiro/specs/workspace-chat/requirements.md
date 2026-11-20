@@ -10,3 +10,10 @@ A small team can open a browser, create a private workspace, invite a colleague,
 6. Publish original code under MIT. A contributor can run it locally and test a pull request. Integration work targets develop, main records stable changes, and a versioned image built from tested main is the input to production.
 7. People who read chat for extended sessions can use a neutral light palette and an optional dim palette. Text, selection, reactions, keyboard focus and input errors remain distinguishable at desktop and phone sizes. Keep the identity of user-supplied content and swatches intact.
 8. A developer can open a dedicated chat database over MCP, run the Rust service against that file and verify live delivery and Japanese search. Document the supported single-host architecture and a path to multi-instance delivery.
+
+## Rust client and message tools
+
+9. Members can correct their own posts and replies and see edits in other signed-in sessions. A stale editor must not overwrite a newer edit. Search reflects the correction.
+10. Members can privately save a message or reply for later, remove it and return to its place in a channel or DM across logins. Other members cannot see their saved state.
+11. Implement first-party application logic in Rust on the server and in the browser. Preserve v0.2 conversations, access rules, drafts, Japanese input, appearance, accessibility and immediate delivery. Measure with independent clients on a warm release build.
+12. Publish the authentication design and OSS design principles. Members can change their password by reauthenticating, rotate the current session and revoke all other sessions and event streams. An error leaves current credentials usable.

@@ -28,9 +28,11 @@ jobs:
       - name: Check the Rust code
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup target add --toolchain stable wasm32-unknown-unknown
           cargo +stable fmt --all -- --check
+          cargo +stable clippy --locked -p rill-client -p rill-appearance --target wasm32-unknown-unknown -- -D warnings
           cargo +stable clippy --locked --all-targets -- -D warnings
-          cargo +stable test --locked
+          cargo +stable test --locked --workspace
           cargo +stable build --locked --bin rill-chat
       - name: Test the chat in Chromium
         working-directory: tests
@@ -56,3 +58,5 @@ jobs:
           docker build --tag rill-pr .
           docker run --detach --name rill-smoke -p 127.0.0.1:3847:3847 rill-pr
           curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 --fail --silent --show-error http://127.0.0.1:3847/healthz || { docker logs rill-smoke; exit 1; }
+          curl --fail --silent --show-error --compressed http://127.0.0.1:3847/rill_client_bg.wasm --output "$RUNNER_TEMP/browser.wasm"
+          cmp -n 4 "$RUNNER_TEMP/browser.wasm" <(printf '\0asm')

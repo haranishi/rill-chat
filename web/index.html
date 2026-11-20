@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-loading>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -11,12 +11,15 @@
   <meta property="og:image" content="/river.png">
   <link rel="canonical" href="/">
   <link rel="icon" type="image/svg+xml" href="/mark.svg">
-  <script src="/appearance.js"></script>
+  <style>html[data-loading] {background:#f5f5f8} html[data-loading][data-theme="dim"] {background:#24262c;color-scheme:dark} html[data-loading] #shell {visibility:hidden} .boot-error {display:none;padding:1rem} html[data-loading="error"] .boot-error {display:block}</style>
+  <link rel="preload" href="/rill_client_bg.wasm" as="fetch" type="application/wasm" crossorigin>
+  <script src="/boot.js"></script>
   <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/app.js"></script>
   <title>Rill — チームチャット</title>
 </head>
 <body>
+  <noscript>Rillを開くには、ブラウザでJavaScriptとWebAssemblyを有効にしてください。</noscript>
+  <p class="boot-error" role="alert">Rillを読み込めませんでした。ブラウザを更新して、ページを再読み込みしてください。</p>
   <a class="skip" href="#timeline">会話へ移動</a>
   <div id="shell">
     <aside id="sidebar" aria-label="ワークスペースナビゲーション">
@@ -29,6 +32,7 @@
         <div class="workspace-text"><strong id="workspace-name">Rill</strong><span id="workspace-caption">ワークスペース</span></div>
       </div>
       <div class="nav-scroll">
+        <button id="saved-open" class="room-link" type="button"><span data-icon="bookmark"></span><span class="room-link-text">あとで読む</span></button>
         <section class="nav-section">
           <div class="nav-label"><h2>チャンネル</h2><button id="new-channel" class="icon-button" data-icon="plus" aria-label="チャンネルを作成"></button></div>
           <nav id="channels" aria-label="チャンネル"></nav>
@@ -78,6 +82,5 @@
   </div>
   <dialog id="dialog"><div id="dialog-body"></div></dialog>
   <div id="toast" aria-live="polite" role="status" hidden></div>
-  <noscript>Rill を利用するにはブラウザの JavaScript を有効にしてください。</noscript>
 </body>
 </html>

@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::model::{ApiError, Member, Result, User, now_ms};
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 
 #[derive(Clone)]
 pub struct Database(Arc<Mutex<Connection>>);
@@ -35,16 +35,17 @@ impl Database {
         conn.execute_batch(
             "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;",
         )?;
-        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         match version {
-            0 => {
-                let tx = conn.transaction()?;
-                tx.execute_batch(include_str!("schema.sql"))?;
-                tx.commit()?;
-            }
-            1 => (),
+            0 => tx.execute_batch(include_str!("schema.sql"))?,
+            1 | 2 => (),
             _ => return Err(format!("Unsupported database schema version {version}").into()),
         }
+        if version < 2 {
+            tx.execute_batch(include_str!("schema_v2.sql"))?;
+        }
+        tx.commit()?;
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 

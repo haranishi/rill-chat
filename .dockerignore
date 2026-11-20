@@ -1,6 +1,15 @@
 **
 !Cargo.toml
 !Cargo.lock
+!client/
+!client/Cargo.toml
+!client/boot.js
+!client/prepaint/
+!client/prepaint/Cargo.toml
+!client/prepaint/src/
+!client/prepaint/src/**
+!client/src/
+!client/src/**
 !LICENSE
 !build.rs
 !src/
