@@ -1,7 +1,9 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use flate2::{Compression, write::GzEncoder};
 use std::{
-    env, fs, io,
+    env,
+    ffi::OsString,
+    fs, io,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -11,6 +13,7 @@ fn main() {
     for path in ["web", "client", "Cargo.toml", "Cargo.lock"] {
         println!("cargo:rerun-if-changed={path}");
     }
+    println!("cargo:rerun-if-env-changed=CARGO_HOME");
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("Cargo output directory"));
     // A separate target directory lets the browser build run while Cargo owns the server build lock.
     let target = out.join("wasm-target");
@@ -29,7 +32,7 @@ fn main() {
             "--target-dir",
         ])
         .arg(&target)
-        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .env("CARGO_ENCODED_RUSTFLAGS", browser_rustflags())
         .env_remove("RUSTFLAGS")
         .status()
         .expect("start Rust browser build");
@@ -55,6 +58,32 @@ fn main() {
         io::copy(&mut src, &mut gzip).expect("compress browser asset");
         gzip.finish().expect("finish gzip asset");
     }
+}
+
+// Panic locations in downloadable modules should describe the crate, not the builder's home.
+fn browser_rustflags() -> OsString {
+    let cargo_home = env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("HOME")
+                .or_else(|| env::var_os("USERPROFILE"))
+                .map(|home| PathBuf::from(home).join(".cargo"))
+        })
+        .expect("Cargo home directory");
+    let sysroot = Command::new(env::var_os("RUSTC").expect("Rust compiler"))
+        .args(["--print", "sysroot"])
+        .output()
+        .expect("locate Rust toolchain");
+    assert!(sysroot.status.success(), "cannot locate Rust toolchain");
+    let sysroot = std::str::from_utf8(&sysroot.stdout)
+        .expect("Rust toolchain path")
+        .trim_end();
+    let mut flags = OsString::from("--remap-path-prefix=");
+    flags.push(cargo_home.join("registry/src"));
+    flags.push("=/cargo/registry/src\u{1f}--remap-path-prefix=");
+    flags.push(Path::new(sysroot).join("lib/rustlib/src/rust"));
+    flags.push("=/rustc");
+    flags
 }
 
 fn write_bootstrap(compiled: &Path, assets: &Path) {
