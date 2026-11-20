@@ -1,0 +1,9 @@
+**
+!Cargo.toml
+!Cargo.lock
+!LICENSE
+!build.rs
+!src/
+!src/**
+!web/
+!web/**

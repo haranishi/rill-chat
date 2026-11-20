@@ -1,0 +1,13 @@
+name: rill-development
+services:
+  chat:
+    build: .
+    init: true
+    environment:
+      RILL_ENV: development
+    ports:
+      - "127.0.0.1:3847:3847"
+    volumes:
+      - development-data:/data
+volumes:
+  development-data:

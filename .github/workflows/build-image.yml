@@ -1,0 +1,65 @@
+name: Build native image
+on:
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        required: true
+      platform:
+        type: string
+        required: true
+    outputs:
+      digest:
+        description: Digest of the tested platform image
+        value: ${{ jobs.build.outputs.digest }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Publish and start the native image
+        id: image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx create --driver docker-container --use
+          docker buildx build --platform "$PLATFORM" --provenance=false \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.licenses=MIT" \
+            --output "type=image,name=$image,push=true,push-by-digest=true,name-canonical=true,oci-mediatypes=true" \
+            --metadata-file "$RUNNER_TEMP/result.json" .
+          digest=$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$RUNNER_TEMP/result.json")
+          docker run --detach --name rill-smoke -p 127.0.0.1:3847:3847 "$image@$digest"
+          curl --retry 15 --retry-delay 1 --retry-all-errors --max-time 3 --fail --silent --show-error http://127.0.0.1:3847/healthz || { docker logs rill-smoke; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Package the native executable and its license notices
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          folder="rill-chat-linux-${PLATFORM#linux/}"
+          mkdir -p "$RUNNER_TEMP/bundle/$folder" "$RUNNER_TEMP/distribution"
+          docker cp rill-smoke:/usr/local/bin/rill-chat "$RUNNER_TEMP/bundle/$folder/rill-chat"
+          docker cp rill-smoke:/usr/share/doc/rill-chat/. "$RUNNER_TEMP/bundle/$folder/"
+          test -x "$RUNNER_TEMP/bundle/$folder/rill-chat"
+          test -s "$RUNNER_TEMP/bundle/$folder/LICENSE"
+          tar -C "$RUNNER_TEMP/bundle" -czf "$RUNNER_TEMP/distribution/$folder.tar.gz" "$folder"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-${{ inputs.runner }}
+          path: ${{ runner.temp }}/distribution/*.tar.gz
+          if-no-files-found: error
+          retention-days: 2
